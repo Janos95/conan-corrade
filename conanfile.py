@@ -3,10 +3,10 @@ from conans.errors import ConanInvalidConfiguration
 import os
 
 class CorradeConan(ConanFile):
-    name = "corrade"
+    name = "Corrade"
     version = "2020.06"
     description = "Corrade is a multiplatform utility library written in C++11/C++14."
-    topics = ("conan", "corrade", "magnum", "filesystem", "console", "environment", "os")
+    topics = ("conan", "corrade", "magnum", "filesystem", "console", "environment", "os", "data structures")
     url = "https://github.com/conan-io/conan-center-index"
     homepage = "https://magnum.graphics/corrade"
     author = "helmesjo <helmesjo@gmail.com>"
@@ -55,10 +55,8 @@ class CorradeConan(ConanFile):
 
     def source(self):
         # Rename to "source_subfolder" is a convention to simplify later steps
-        source_url = "https://github.com/mosra/corrade"
-        tools.get("{0}/archive/v{1}.tar.gz".format(source_url, self.version))
-        extracted_dir = self.name + "-" + self.version
-        os.rename(extracted_dir, self._source_subfolder)
+        tools.get(**self.conan_data["sources"][self.version])
+        os.rename(f"corrade-{self.version}", self._source_subfolder)
 
     def _configure_cmake(self):
         if not self._cmake:
@@ -99,58 +97,47 @@ class CorradeConan(ConanFile):
         cmake.install()
 
         share_cmake = os.path.join(self.package_folder, "share", "cmake", "Corrade")
-        self.copy("CMakeLists.txt", src=share_cmake, dst=os.path.join(self.package_folder, "lib", "cmake", "Corrade"))
+        #self.copy("CMakeLists.txt", src=share_cmake, dst=os.path.join(self.package_folder, "lib", "cmake", "Corrade"))
         self.copy("CorradeConfig.cmake", src=share_cmake, dst=os.path.join(self.package_folder, "lib", "cmake", "Corrade"))
         self.copy("CorradeLibSuffix.cmake", src=share_cmake, dst=os.path.join(self.package_folder, "lib", "cmake", "Corrade"))
         self.copy("FindCorrade.cmake", src=share_cmake, dst=os.path.join(self.package_folder, "lib", "cmake", "Corrade"))
         self.copy("UseCorrade.cmake", src=share_cmake, dst=os.path.join(self.package_folder, "lib", "cmake", "Corrade"))
         tools.rmdir(os.path.join(self.package_folder, "share"))
 
-    def _sort_libs(self, correct_order, libs, lib_suffix="", reverse_result=False):
-        # Add suffix for correct string matching
-        correct_order[:] = [s.__add__(lib_suffix) for s in correct_order]
-
-        result = []
-        for expectedLib in correct_order:
-            for lib in libs:
-                if expectedLib == lib:
-                    result.append(lib)
-
-        if reverse_result:
-            # Linking happens in reversed order
-            result.reverse()
-        return result
-
     def package_info(self):
-        self.cpp_info.names["cmake_find_package"] = "Corrade"
-        self.cpp_info.names["cmake_find_package_multi"] = "Corrade"
-
-        self.cpp_info.includedirs.append("include")
-        self.cpp_info.builddirs.append(os.path.join("lib", "cmake", "Corrade"))
-        self.cpp_info.build_modules.append(os.path.join("lib", "cmake", "Corrade", "FindCorrade.cmake"))
-        self.cpp_info.build_modules.append(os.path.join("lib", "cmake", "Corrade", "CorradeLibSuffix.cmake"))
-        self.cpp_info.build_modules.append(os.path.join("lib", "cmake", "Corrade", "CMakeLists.txt"))
-        self.cpp_info.build_modules.append(os.path.join("lib", "cmake", "Corrade", "CorradeConfig.cmake"))
-        self.cpp_info.build_modules.append(os.path.join("lib", "cmake", "Corrade", "UseCorrade.cmake"))
-
-        # See dependency order here: https://doc.magnum.graphics/magnum/custom-buildsystems.html
-        allLibs = [
-            #1
-            "CorradeMain",
-            "CorradeUtility",
-            "CorradeContainers",
-            #2
-            "CorradeInterconnect",
-            "CorradePluginManager",
-            "CorradeTestSuite",
-        ]
-
-        # Sort all built libs according to above, and reverse result for correct link order
         suffix = "-d" if self.settings.build_type == "Debug" else ""
         builtLibs = tools.collect_libs(self)
-        self.cpp_info.libs = self._sort_libs(allLibs, builtLibs, suffix, True)
-        if self.settings.os == "Linux":
-            self.cpp_info.system_libs = ["m", "dl"]
+
+
+        components = {
+            "Containers": [],
+            "Utility": ["Containers"],
+            "Interconnect": ["Containers"],
+            "PluginManager": ["Containers"],
+            "TestSuite": ["Containers"],
+            "Main": []
+        }
+        
+        header_only = ["Containers"]
+        
+        for component, deps in components.items():
+            lib = "Corrade" + component + suffix
+            if lib in builtLibs or component in header_only:
+                self.cpp_info.components[component].names["cmake_find_package"] = component
+                self.cpp_info.components[component].names["cmake_find_package_multi"] = component
+                if component not in header_only:
+                    self.cpp_info.components[component].libs = [lib]
+                self.cpp_info.components[component].requires = deps
+                self.cpp_info.components[component].includedirs.append("include")
+                if self.settings.os == "Linux":
+                    self.cpp_info.components[component].system_libs = ["m", "dl"]
+                    
+                self.cpp_info.components[component].builddirs.append(os.path.join("lib", "cmake", "Corrade"))
+                self.cpp_info.components[component].build_modules.append(os.path.join("lib", "cmake", "Corrade", "FindCorrade.cmake"))
+                self.cpp_info.components[component].build_modules.append(os.path.join("lib", "cmake", "Corrade", "CorradeLibSuffix.cmake"))
+                self.cpp_info.components[component].build_modules.append(os.path.join("lib", "cmake", "Corrade", "CMakeLists.txt"))
+                self.cpp_info.components[component].build_modules.append(os.path.join("lib", "cmake", "Corrade", "CorradeConfig.cmake"))
+                self.cpp_info.components[component].build_modules.append(os.path.join("lib", "cmake", "Corrade", "UseCorrade.cmake"))    
 
         self.env_info.PATH.append(os.path.join(self.package_folder, "bin"))
         if self.options.shared:
