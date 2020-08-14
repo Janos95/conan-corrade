@@ -56,7 +56,7 @@ class CorradeConan(ConanFile):
     def source(self):
         # Rename to "source_subfolder" is a convention to simplify later steps
         tools.get(**self.conan_data["sources"][self.version])
-        os.rename(f"corrade-{self.version}", self._source_subfolder)
+        os.rename("corrade-{}".format(self.version), self._source_subfolder)
 
     def _configure_cmake(self):
         if not self._cmake:
